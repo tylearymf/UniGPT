@@ -4,6 +4,16 @@
 
 ---
 
+![chatgpt](.\Screenshots\chatgpt.gif)
+
+![binggpt](.\Screenshots\binggpt.gif)
+
+
+
+### 安装要求
+
+**Unity版本 >= 2019.3**
+
 ### 使用教程
 
 #### 配置ChatGPT
@@ -53,3 +63,19 @@
 
 
 
+
+
+### 如果出现使用不了, 请手动安装package
+
+![image-20230324020733689](.\Screenshots\image-20230324020733689.png)
+
+```
+使用以下命令手动安装所需的package
+
+python -m pip install EdgeGPT
+python -m pip install revChatGPT==3.3.5
+```
+
+![image-20230324021009501](.\Screenshots\image-20230324021009501.png)
+
+![image-20230324021128716](.\Screenshots\image-20230324021128716.png)
