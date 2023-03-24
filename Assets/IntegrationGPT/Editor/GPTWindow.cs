@@ -32,6 +32,7 @@ namespace UnityEditor.GPT
 
         Evaluator m_Evaluator;
         StringBuilder m_Builder;
+        Dictionary<AIType, string> m_ApiUrlKeys;
 
         GUIStyle m_OutputStyle;
         Vector2 m_OutputPos;
@@ -40,10 +41,10 @@ namespace UnityEditor.GPT
         string m_InputText;
 
         AIType m_CurrentType;
-        PromptData m_CurrentData;
+        Config m_CurrentData;
         int[] m_AITypeIDs;
         string[] m_AITypeNames;
-        Dictionary<AIType, PromptData> m_Prompts;
+        Dictionary<AIType, Config> m_Prompts;
 
         void OnEnable()
         {
@@ -72,6 +73,12 @@ namespace UnityEditor.GPT
             }
 
             InitPrompts();
+
+            m_ApiUrlKeys = new Dictionary<AIType, string>()
+            {
+                { AIType.OpenAI, "API_URL" },
+                { AIType.Bing, "BING_PROXY_URL" },
+            };
         }
 
         void OnDisable()
@@ -143,12 +150,18 @@ namespace UnityEditor.GPT
                 EditorGUI.BeginDisabledGroup(string.IsNullOrEmpty(m_InputText));
                 if (GUILayout.Button("Execute", GUILayout.Height(32)))
                 {
-                    var text = m_InputText.Trim();
                     m_Builder.Clear();
-                    m_Builder.AppendLine("import gpt");
+
+                    if (m_CurrentData != null && m_ApiUrlKeys.ContainsKey(m_CurrentType))
+                    {
+                        m_Builder.AppendLine($"import os");
+                        m_Builder.AppendLine($"os.environ['{m_ApiUrlKeys[m_CurrentType]}']='{m_CurrentData.api_url ?? string.Empty}'");
+                    }
+
+                    m_Builder.AppendLine($"import gpt");
                     m_Builder.AppendLine($"gpt.set_prompt('''{m_CurrentData?.GetValue() ?? string.Empty}''')");
-                    m_Builder.AppendLine($"gpt.ask_{m_CurrentType.ToString().ToLower()}('''{text}''')");
-                    PythonRunner.RunString(m_Builder.ToString(), "__main__");
+                    m_Builder.AppendLine($"gpt.ask_{m_CurrentType.ToString().ToLower()}('''{m_InputText.Trim()}''')");
+                    PythonRunner.RunString(m_Builder.ToString());
                 }
                 EditorGUI.EndDisabledGroup();
             }
@@ -167,7 +180,7 @@ namespace UnityEditor.GPT
         void InitPrompts()
         {
             if (m_Prompts == null)
-                m_Prompts = new Dictionary<AIType, PromptData>();
+                m_Prompts = new Dictionary<AIType, Config>();
 
             var folderPath = Path.Combine(Application.dataPath, "IntegrationGPT");
             var aiTypes = Enum.GetValues(typeof(AIType));
@@ -188,12 +201,12 @@ namespace UnityEditor.GPT
                 {
                     if (!m_Prompts.TryGetValue(type, out var promptData))
                     {
-                        promptData = new PromptData();
+                        promptData = new Config();
                         m_Prompts.Add(type, promptData);
                     }
 
                     var config = Newtonsoft.Json.JsonConvert.DeserializeObject<Config>(fileContent);
-                    promptData.SetData(config.prompts);
+                    promptData.SetConfig(config);
                 }
                 catch (Exception ex)
                 {
@@ -248,22 +261,24 @@ namespace UnityEditor.GPT
     }
 
     [Serializable]
-    struct Config
+    class Config
     {
+        // json key
+        public string api_url;
         public Dictionary<string, string> prompts;
-    }
 
-    class PromptData
-    {
+        // internal field
         public int Index;
         public string[] Names;
-        public Dictionary<string, string> Prompts;
 
-        public void SetData(Dictionary<string, string> prompts)
+        public void SetConfig(Config config)
         {
-            Prompts = prompts;
-            Names = Prompts.Keys.ToArray();
+            // copy
+            api_url = config.api_url;
+            prompts = config.prompts;
 
+            // init
+            Names = prompts.Keys.ToArray();
             if (Index < 0 || Index >= Names.Length)
                 Index = 0;
         }
@@ -274,7 +289,7 @@ namespace UnityEditor.GPT
             if (index >= 0 && index < Names.Length)
             {
                 var name = Names[index];
-                Prompts.TryGetValue(name, out var value);
+                prompts.TryGetValue(name, out var value);
                 return value;
             }
 

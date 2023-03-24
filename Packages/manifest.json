@@ -3,8 +3,8 @@
     "com.unity.code-analysis": "0.1.0-preview.2",
     "com.unity.ide.visualstudio": "2.0.16",
     "com.unity.ide.vscode": "1.2.5",
+    "com.unity.nuget.newtonsoft-json": "3.0.2",
     "com.unity.scripting.python": "7.0.0",
-    "com.unity.ugui": "1.0.0",
-    "com.unity.nuget.newtonsoft-json": "3.0.2"
+    "com.unity.ugui": "1.0.0"
   }
 }
