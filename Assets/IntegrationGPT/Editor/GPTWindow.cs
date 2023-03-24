@@ -51,8 +51,6 @@ namespace UnityEditor.GPT
             Evaluator.Instance.OnEvaluationError -= OnEvaluationError;
             Evaluator.Instance.OnEvaluationError += OnEvaluationError;
 
-            System.Environment.SetEnvironmentVariable("all_proxy", "socks5://127.0.0.1:30801/");
-
             m_Builder = new StringBuilder();
             var aiTypes = Enum.GetValues(typeof(AIType));
             var len = aiTypes.Length;
