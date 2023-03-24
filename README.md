@@ -20,7 +20,7 @@
 
 1. 获取 ChatGPT 的 api_key，具体参考：https://github.com/acheong08/ChatGPT#v3-official-chat-api
 2. 编辑该Json配置：Assets/IntegrationGPT/openai_config.json
-3. 如果你没有代理节点的可以参考这里部署个腾讯云函数：https://github.com/easychen/openai-api-proxy/blob/master/FUNC.md，然后替换掉配置中的 api_url 即可
+3. 如果你没有代理节点的可以参考这里部署个腾讯云函数：[openai-api-proxy](https://github.com/easychen/openai-api-proxy/blob/master/FUNC.md)，然后替换掉配置中的 api_url 即可
 
 ```json
 {
