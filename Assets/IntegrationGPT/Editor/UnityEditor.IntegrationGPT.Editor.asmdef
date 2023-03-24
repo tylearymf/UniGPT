@@ -24,7 +24,8 @@
         "System.Composition.Runtime.dll",
         "System.Composition.TypedParts.dll",
         "System.Reflection.Metadata.dll",
-        "System.Runtime.Loader.dll"
+        "System.Runtime.Loader.dll",
+        "Newtonsoft.Json.dll"
     ],
     "autoReferenced": true,
     "defineConstraints": [],

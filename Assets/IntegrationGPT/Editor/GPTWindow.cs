@@ -1,10 +1,12 @@
 using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using UnityEditor.Scripting.Python;
 using UnityEngine;
-using Debug = UnityEngine.Debug;
 
 namespace UnityEditor.GPT
 {
@@ -37,9 +39,11 @@ namespace UnityEditor.GPT
         Vector2 m_InputPos;
         string m_InputText;
 
-        AIType m_AIType;
+        AIType m_CurrentType;
+        PromptData m_CurrentData;
         int[] m_AITypeIDs;
         string[] m_AITypeNames;
+        Dictionary<AIType, PromptData> m_Prompts;
 
         void OnEnable()
         {
@@ -50,6 +54,9 @@ namespace UnityEditor.GPT
             Evaluator.Instance.OnEvaluationSuccess += OnEvaluationSuccess;
             Evaluator.Instance.OnEvaluationError -= OnEvaluationError;
             Evaluator.Instance.OnEvaluationError += OnEvaluationError;
+
+            FilePostprocessor.TextFileChanged -= TextFileChanged;
+            FilePostprocessor.TextFileChanged += TextFileChanged;
 
             m_Builder = new StringBuilder();
             var aiTypes = Enum.GetValues(typeof(AIType));
@@ -63,6 +70,8 @@ namespace UnityEditor.GPT
                 m_AITypeIDs[i] = (int)item;
                 m_AITypeNames[i] = item.ToString();
             }
+
+            InitPrompts();
         }
 
         void OnDisable()
@@ -72,20 +81,18 @@ namespace UnityEditor.GPT
                 Evaluator.Instance.OnEvaluationSuccess -= OnEvaluationSuccess;
                 Evaluator.Instance.OnEvaluationError -= OnEvaluationError;
             }
+
+            FilePostprocessor.TextFileChanged -= TextFileChanged;
         }
 
         void OnGUI()
         {
-            if (m_OutputStyle == null)
-            {
-                m_OutputStyle = new GUIStyle(EditorStyles.textField);
-                m_OutputStyle.richText = true;
-            }
+            InitStyles();
 
             var windowSize = position.size;
-            var extraHeight = 65;
+            var execHeight = 50;
             var labelHeight = 16;
-            windowSize.y -= extraHeight;
+            windowSize.y -= execHeight;
             windowSize.y -= labelHeight * 2;
             var outputHeight = windowSize.y * 0.5F;
             var inputHeight = windowSize.y * 0.5F;
@@ -105,31 +112,101 @@ namespace UnityEditor.GPT
             }
             EditorGUILayout.EndScrollView();
 
-            EditorGUILayout.LabelField(" Input Command", EditorStyles.boldLabel, GUILayout.Height(labelHeight));
+            EditorGUILayout.BeginHorizontal();
+            {
+                EditorGUILayout.LabelField(" Input Command", EditorStyles.boldLabel, GUILayout.Height(labelHeight));
+                GUILayout.FlexibleSpace();
+
+                EditorGUILayout.LabelField("AI:", EditorStyles.boldLabel, GUILayout.Width(20));
+                GUI.changed = false;
+                m_CurrentType = (AIType)EditorGUILayout.IntPopup((int)m_CurrentType, m_AITypeNames, m_AITypeIDs, GUILayout.Width(80));
+                if (GUI.changed)
+                    UpdateCurrentPromptData();
+
+                GUILayout.Space(10);
+
+                EditorGUILayout.LabelField("Prompt:", EditorStyles.boldLabel, GUILayout.Width(50));
+                if (m_CurrentData != null)
+                    m_CurrentData.Index = EditorGUILayout.Popup(m_CurrentData.Index, m_CurrentData.Names);
+                else
+                    EditorGUILayout.LabelField(string.Empty, EditorStyles.popup);
+            }
+            EditorGUILayout.EndHorizontal();
             m_InputPos = EditorGUILayout.BeginScrollView(m_InputPos, GUILayout.Height(inputHeight));
             {
                 m_InputText = GUILayout.TextArea(m_InputText, GUILayout.ExpandHeight(true));
             }
             EditorGUILayout.EndScrollView();
 
-            EditorGUILayout.BeginVertical(GUILayout.Height(extraHeight));
+            EditorGUILayout.BeginVertical(GUILayout.Height(execHeight));
             {
-                EditorGUILayout.BeginHorizontal();
-                {
-                    m_AIType = (AIType)EditorGUILayout.IntPopup((int)m_AIType, m_AITypeNames, m_AITypeIDs);
-                }
-                EditorGUILayout.EndHorizontal();
-
-                if (GUILayout.Button("Execute", GUILayout.Height(30)))
+                EditorGUI.BeginDisabledGroup(string.IsNullOrEmpty(m_InputText));
+                if (GUILayout.Button("Execute", GUILayout.Height(32)))
                 {
                     var text = m_InputText.Trim();
                     m_Builder.Clear();
                     m_Builder.AppendLine("import gpt");
-                    m_Builder.AppendLine($"gpt.ask_{m_AIType.ToString().ToLower()}('{text}')");
+                    m_Builder.AppendLine($"gpt.set_prompt('''{m_CurrentData?.GetValue() ?? string.Empty}''')");
+                    m_Builder.AppendLine($"gpt.ask_{m_CurrentType.ToString().ToLower()}('''{text}''')");
                     PythonRunner.RunString(m_Builder.ToString(), "__main__");
                 }
+                EditorGUI.EndDisabledGroup();
             }
             EditorGUILayout.EndVertical();
+        }
+
+        void InitStyles()
+        {
+            if (m_OutputStyle == null)
+            {
+                m_OutputStyle = new GUIStyle(EditorStyles.textField);
+                m_OutputStyle.richText = true;
+            }
+        }
+
+        void InitPrompts()
+        {
+            if (m_Prompts == null)
+                m_Prompts = new Dictionary<AIType, PromptData>();
+
+            var folderPath = Path.Combine(Application.dataPath, "IntegrationGPT");
+            var aiTypes = Enum.GetValues(typeof(AIType));
+            for (int i = 0; i < aiTypes.Length; i++)
+            {
+                var type = (AIType)aiTypes.GetValue(i);
+                var fileName = $"{type.ToString().ToLower()}_config.json";
+                var filePath = Path.Combine(folderPath, fileName);
+
+                if (!File.Exists(filePath))
+                {
+                    m_Prompts.Remove(type);
+                    continue;
+                }
+
+                var fileContent = File.ReadAllText(filePath);
+                try
+                {
+                    if (!m_Prompts.TryGetValue(type, out var promptData))
+                    {
+                        promptData = new PromptData();
+                        m_Prompts.Add(type, promptData);
+                    }
+
+                    var config = Newtonsoft.Json.JsonConvert.DeserializeObject<Config>(fileContent);
+                    promptData.SetData(config.prompts);
+                }
+                catch (Exception ex)
+                {
+                    Debug.LogException(ex);
+                }
+            }
+
+            UpdateCurrentPromptData();
+        }
+
+        void UpdateCurrentPromptData()
+        {
+            m_Prompts?.TryGetValue(m_CurrentType, out m_CurrentData);
         }
 
         async Task Recv(AIType type, string question, string msg)
@@ -156,6 +233,11 @@ namespace UnityEditor.GPT
             if (error != null)
                 Debug.LogException(error);
         }
+
+        void TextFileChanged()
+        {
+            InitPrompts();
+        }
     }
 
     public enum AIType
@@ -163,5 +245,58 @@ namespace UnityEditor.GPT
         OpenAI = 0,
         Bing,
         Bard,
+    }
+
+    [Serializable]
+    struct Config
+    {
+        public Dictionary<string, string> prompts;
+    }
+
+    class PromptData
+    {
+        public int Index;
+        public string[] Names;
+        public Dictionary<string, string> Prompts;
+
+        public void SetData(Dictionary<string, string> prompts)
+        {
+            Prompts = prompts;
+            Names = Prompts.Keys.ToArray();
+
+            if (Index < 0 || Index >= Names.Length)
+                Index = 0;
+        }
+
+        public string GetValue()
+        {
+            var index = Index;
+            if (index >= 0 && index < Names.Length)
+            {
+                var name = Names[index];
+                Prompts.TryGetValue(name, out var value);
+                return value;
+            }
+
+            return string.Empty;
+        }
+    }
+
+    class FilePostprocessor : AssetPostprocessor
+    {
+        public static event Action TextFileChanged;
+
+        static void OnPostprocessAllAssets(string[] importedAssets, string[] deletedAssets, string[] movedAssets, string[] movedFromAssetPaths)
+        {
+            foreach (var item in importedAssets)
+            {
+                var ext = Path.GetExtension(item);
+                if (ext == ".json" || ext == ".txt")
+                {
+                    TextFileChanged?.Invoke();
+                    break;
+                }
+            }
+        }
     }
 }

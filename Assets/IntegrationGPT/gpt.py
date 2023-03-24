@@ -17,6 +17,7 @@ gpt_path = sys.path[1]
 bing_config_path = gpt_path + "/bing_config.json"
 bing_cookie_path = gpt_path + "/bing_cookies.json"
 openai_config_path = gpt_path + "/openai_config.json"
+last_prompt = ''
 
 def recv(type : AIType, question, msg):
     editor.GPT.GPTWindow.recv(int(type), question, msg)
@@ -25,6 +26,10 @@ def _common_filter(type, question):
     # 特殊命令
     return False
 
+def set_prompt(prompt):
+    global last_prompt
+    last_prompt = prompt
+
 async def _ask_openai(question):
     if _common_filter(AIType.OpenAI, question):
         return
@@ -32,7 +37,7 @@ async def _ask_openai(question):
     with open(openai_config_path, encoding="utf8") as f:
         config = json.load(f)
 
-    prompt = config['prompt'] + question
+    prompt = last_prompt + question
     api_key = config['api_key']
     model = config['model']
 
@@ -56,13 +61,13 @@ async def _ask_bing(question):
     with open(bing_config_path, encoding="utf8") as f:
         config = json.load(f)
 
-    prompt = config['prompt'] + question
+    prompt = last_prompt + question
     style = config['style']
     if 'proxy' in config:
         proxy = config['proxy']
     else:
         proxy = None
-        
+    
     bot = bing.Chatbot(cookiePath=bing_cookie_path,
                        proxy=proxy)
     recv(AIType.Bing, question, (await bot.ask(prompt=prompt, conversation_style=style))["item"]["messages"][1]["adaptiveCards"][0]["body"][0]["text"])
