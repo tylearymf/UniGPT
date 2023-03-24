@@ -39,6 +39,7 @@ namespace UnityEditor.GPT
         string m_OutputText;
         Vector2 m_InputPos;
         string m_InputText;
+        bool m_OnlyShowOutput;
 
         AIType m_CurrentType;
         Config m_CurrentData;
@@ -99,15 +100,22 @@ namespace UnityEditor.GPT
             var windowSize = position.size;
             var execHeight = 50;
             var labelHeight = 16;
-            windowSize.y -= execHeight;
-            windowSize.y -= labelHeight * 2;
-            var outputHeight = windowSize.y * 0.5F;
-            var inputHeight = windowSize.y * 0.5F;
+
+            if (!m_OnlyShowOutput)
+            {
+                windowSize.y -= execHeight;
+                windowSize.y -= labelHeight * 2;
+            }
+
+            var outputHeight = windowSize.y * (m_OnlyShowOutput ? 1 : 0.5F);
+            var inputHeight = windowSize.y * (m_OnlyShowOutput ? 0 : 0.5F);
 
             EditorGUILayout.BeginHorizontal(GUILayout.Height(labelHeight));
             {
                 EditorGUILayout.LabelField(" Output", EditorStyles.boldLabel);
                 GUILayout.FlexibleSpace();
+
+                m_OnlyShowOutput = GUILayout.Toggle(m_OnlyShowOutput, "Only Show Output");
                 if (GUILayout.Button("Clear Output"))
                     m_OutputText = string.Empty;
             }
@@ -118,6 +126,9 @@ namespace UnityEditor.GPT
                 GUILayout.TextField(m_OutputText, m_OutputStyle, GUILayout.ExpandHeight(true));
             }
             EditorGUILayout.EndScrollView();
+
+            if (inputHeight == 0)
+                return;
 
             EditorGUILayout.BeginHorizontal();
             {
@@ -139,6 +150,7 @@ namespace UnityEditor.GPT
                     EditorGUILayout.LabelField(string.Empty, EditorStyles.popup);
             }
             EditorGUILayout.EndHorizontal();
+
             m_InputPos = EditorGUILayout.BeginScrollView(m_InputPos, GUILayout.Height(inputHeight));
             {
                 m_InputText = GUILayout.TextArea(m_InputText, GUILayout.ExpandHeight(true));
