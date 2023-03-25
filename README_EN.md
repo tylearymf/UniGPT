@@ -6,6 +6,8 @@
 
 **Use ChatGPT and BingChat to generate and execute code within the Unity editor.**
 
+**Output text supports streaming.**
+
 ------
 
 ![chatgpt](Screenshots/chatgpt.gif)
