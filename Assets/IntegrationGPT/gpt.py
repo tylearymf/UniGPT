@@ -1,26 +1,33 @@
 import os
-import sys
 import asyncio
 import json
-from enum import IntEnum
+import shutil
+import enum
+import socket
 
-import UnityEditor as editor
 import EdgeGPT as bing
 import revChatGPT.V3 as openai_v3
 
-class AIType(IntEnum):
+class AIType(enum.IntEnum):
     OpenAI = 0
     Bing = 1
     Bard = 2
 
-gpt_path = sys.path[1]
+gpt_path = os.environ['GPT_PATH']
 bing_config_path = gpt_path + "/bing_config.json"
 bing_cookie_path = gpt_path + "/bing_cookies.json"
 openai_config_path = gpt_path + "/openai_config.json"
 last_prompt = ''
 
-def recv(type : AIType, question, msg):
-    editor.GPT.GPTWindow.recv(int(type), question, msg)
+client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+server_address = ('localhost', 10086)
+client_socket.connect(server_address)
+
+def close_socket():
+    client_socket.close()
+
+def send_text(msg):
+    client_socket.sendall(msg.encode())
 
 def _common_filter(type, question):
     # 特殊命令
@@ -31,7 +38,8 @@ def set_prompt(prompt):
     last_prompt = prompt
 
 async def _ask_openai(question):
-    if _common_filter(AIType.OpenAI, question):
+    type = AIType.OpenAI
+    if _common_filter(type, question):
         return
     
     with open(openai_config_path, encoding="utf8") as f:
@@ -46,16 +54,17 @@ async def _ask_openai(question):
     else:
         proxy = None
 
-    chatbot = openai_v3.ChatbotCLI(api_key=api_key,
-                                   engine=model,
-                                   proxy=proxy)
-    recv(AIType.OpenAI, question, chatbot.ask(prompt, "user"))
+    chatbot = openai_v3.ChatbotCLI(api_key=api_key, engine=model, proxy=proxy)
+    for query in chatbot.ask_stream(prompt):
+        send_text(query)
+    close_socket()
 
 def ask_openai(question):
     asyncio.run(_ask_openai(question))
 
 async def _ask_bing(question):
-    if _common_filter(AIType.Bing, question):
+    type = AIType.Bing
+    if _common_filter(type, question):
         return
     
     with open(bing_config_path, encoding="utf8") as f:
@@ -68,16 +77,23 @@ async def _ask_bing(question):
     else:
         proxy = None
     
-    bot = bing.Chatbot(cookiePath=bing_cookie_path,
-                       proxy=proxy)
-    recv(AIType.Bing, question, (await bot.ask(prompt=prompt, conversation_style=style))["item"]["messages"][1]["adaptiveCards"][0]["body"][0]["text"])
+    bot = bing.Chatbot(cookiePath=bing_cookie_path, proxy=proxy)
+    wrote = 0
+    async for final, response in bot.ask_stream(prompt=prompt, conversation_style=style):
+        if not final:
+            send_text(response[wrote:])
+            wrote = len(response)
+    close_socket()
     await bot.close()
 
 def ask_bing(question):
     asyncio.run(_ask_bing(question))
 
 async def _ask_bard(question):
-    recv(AIType.Bard, question, "not implemented")
+    type = AIType.Bard
+
+    send_text("not implemented")
+    close_socket()
 
 def ask_bard(question):
     asyncio.run(_ask_bard(question))

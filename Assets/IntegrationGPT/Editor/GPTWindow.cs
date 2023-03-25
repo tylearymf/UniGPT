@@ -1,10 +1,13 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Net.Sockets;
+using System.Net;
 using System.Text;
 using System.Text.RegularExpressions;
-using System.Threading.Tasks;
+using System.Threading;
+using Python.Runtime;
 using UnityEditor.Scripting.Python;
 using UnityEngine;
 
@@ -21,17 +24,11 @@ namespace UnityEditor.GPT
             win.Show();
         }
 
-        public static async void recv(int typeID, string question, string msg)
-        {
-            var type = (AIType)typeID;
-            if (s_Instance != null)
-                await s_Instance.Recv(type, question, msg);
-        }
-
         static GPTWindow s_Instance;
 
         Evaluator m_Evaluator;
-        StringBuilder m_Builder;
+        StringBuilder m_InputBuilder;
+        StringBuilder m_CodeBuilder;
         Dictionary<AIType, string> m_ApiUrlKeys;
 
         GUIStyle m_OutputStyle;
@@ -46,6 +43,8 @@ namespace UnityEditor.GPT
         int[] m_AITypeIDs;
         string[] m_AITypeNames;
         Dictionary<AIType, Config> m_Prompts;
+        ProcessState m_ProcessState;
+        SynchronizationContext unitySynchronizationContext;
 
         void OnEnable()
         {
@@ -60,7 +59,19 @@ namespace UnityEditor.GPT
             FilePostprocessor.TextFileChanged -= TextFileChanged;
             FilePostprocessor.TextFileChanged += TextFileChanged;
 
-            m_Builder = new StringBuilder();
+            unitySynchronizationContext = SynchronizationContext.Current;
+            m_ProcessState = new ProcessState();
+            m_ProcessState.onReceivedMsg = new Action<string>(msg =>
+            {
+                unitySynchronizationContext.Post((d) =>
+                {
+                    AppendToOutput(msg);
+                }, null);
+            });
+
+            m_InputBuilder = new StringBuilder();
+            m_CodeBuilder = new StringBuilder();
+
             var aiTypes = Enum.GetValues(typeof(AIType));
             var len = aiTypes.Length;
             m_AITypeNames = new string[len];
@@ -91,6 +102,9 @@ namespace UnityEditor.GPT
             }
 
             FilePostprocessor.TextFileChanged -= TextFileChanged;
+
+            m_ProcessState.Kill();
+            m_ProcessState.Reset();
         }
 
         void OnGUI()
@@ -107,6 +121,7 @@ namespace UnityEditor.GPT
                 windowSize.y -= labelHeight * 2;
             }
 
+            var outputWidth = windowSize.x;
             var outputHeight = windowSize.y * (m_OnlyShowOutput ? 1 : 0.5F);
             var inputHeight = windowSize.y * (m_OnlyShowOutput ? 0 : 0.5F);
 
@@ -120,6 +135,17 @@ namespace UnityEditor.GPT
                     m_OutputText = string.Empty;
             }
             EditorGUILayout.EndHorizontal();
+
+            if (m_ProcessState.scrollToBottom)
+            {
+                m_ProcessState.scrollToBottom = false;
+                m_OutputPos.y = m_OutputStyle.CalcHeight(new GUIContent(m_OutputText), outputWidth);
+                if (m_ProcessState.isFinished)
+                {
+                    TryExecCode(m_ProcessState.recvText.ToString());
+                    m_ProcessState.Reset();
+                }
+            }
 
             m_OutputPos = EditorGUILayout.BeginScrollView(m_OutputPos, GUILayout.Height(outputHeight));
             {
@@ -150,7 +176,6 @@ namespace UnityEditor.GPT
                     EditorGUILayout.LabelField(string.Empty, EditorStyles.popup);
             }
             EditorGUILayout.EndHorizontal();
-
             m_InputPos = EditorGUILayout.BeginScrollView(m_InputPos, GUILayout.Height(inputHeight));
             {
                 m_InputText = GUILayout.TextArea(m_InputText, GUILayout.ExpandHeight(true));
@@ -159,21 +184,24 @@ namespace UnityEditor.GPT
 
             EditorGUILayout.BeginVertical(GUILayout.Height(execHeight));
             {
-                EditorGUI.BeginDisabledGroup(string.IsNullOrEmpty(m_InputText));
+                EditorGUI.BeginDisabledGroup(string.IsNullOrEmpty(m_InputText) || m_ProcessState.isProcessing);
                 if (GUILayout.Button("Execute", GUILayout.Height(32)))
                 {
-                    m_Builder.Clear();
+                    var inputText = m_InputText.Trim();
+                    m_InputBuilder.Clear();
 
                     if (m_CurrentData != null && m_ApiUrlKeys.ContainsKey(m_CurrentType))
                     {
-                        m_Builder.AppendLine($"import os");
-                        m_Builder.AppendLine($"os.environ['{m_ApiUrlKeys[m_CurrentType]}']='{m_CurrentData.api_url ?? string.Empty}'");
+                        m_InputBuilder.AppendLine($"import os");
+                        m_InputBuilder.AppendLine($"os.environ['{m_ApiUrlKeys[m_CurrentType]}']='{m_CurrentData.api_url ?? string.Empty}'");
                     }
 
-                    m_Builder.AppendLine($"import gpt");
-                    m_Builder.AppendLine($"gpt.set_prompt('''{m_CurrentData?.GetValue() ?? string.Empty}''')");
-                    m_Builder.AppendLine($"gpt.ask_{m_CurrentType.ToString().ToLower()}('''{m_InputText.Trim()}''')");
-                    PythonRunner.RunString(m_Builder.ToString());
+                    m_InputBuilder.AppendLine($"import gpt");
+                    m_InputBuilder.AppendLine($"gpt.set_prompt('''{m_CurrentData?.GetValue() ?? string.Empty}''')");
+                    m_InputBuilder.AppendLine($"gpt.ask_{m_CurrentType.ToString().ToLower()}('''{inputText}''')");
+
+                    AppendToOutput($"<color=#FFCC00>You</color>: {inputText}\n<color=#00CCFF>{m_CurrentType}</color>: ");
+                    RunScript(m_InputBuilder.ToString());
                 }
                 EditorGUI.EndDisabledGroup();
             }
@@ -186,6 +214,7 @@ namespace UnityEditor.GPT
             {
                 m_OutputStyle = new GUIStyle(EditorStyles.textField);
                 m_OutputStyle.richText = true;
+                m_OutputStyle.wordWrap = true;
             }
         }
 
@@ -229,20 +258,38 @@ namespace UnityEditor.GPT
             UpdateCurrentPromptData();
         }
 
+        void AppendToOutput(string str)
+        {
+            m_OutputText += str;
+            m_ProcessState.scrollToBottom = true;
+
+            Repaint();
+            GUI.FocusControl(string.Empty);
+        }
+
         void UpdateCurrentPromptData()
         {
             m_Prompts?.TryGetValue(m_CurrentType, out m_CurrentData);
         }
 
-        async Task Recv(AIType type, string question, string msg)
+        async void TryExecCode(string msg)
         {
-            m_OutputText += $"<color=#FFCC00>You</color>: {question}\n<color=#00CCFF>{type}</color>:{msg}\n\n";
-
             var match = Regex.Match(msg, @"```(?:csharp)?\s*(.*?)\s*```", RegexOptions.Singleline);
             if (match.Success)
             {
-                var code = match.Groups[1].Value;
-                await Evaluator.Instance.Evaluate(code);
+                var code = match.Groups[1].Value.Trim();
+                if (code.StartsWith("using"))
+                {
+                    try
+                    {
+                        await Evaluator.Instance.Evaluate(code);
+                    }
+                    catch (Exception ex)
+                    {
+                        Debug.LogError("代码编译失败, 请检查原代码块.(Code compilation error, please check the original code block.)");
+                        Debug.LogException(ex);
+                    }
+                }
             }
         }
 
@@ -254,14 +301,69 @@ namespace UnityEditor.GPT
 
         async void OnEvaluationSuccess(object output)
         {
-            var error = await Evaluator.Instance.EvaluateSilently("var method = typeof(TemplateClass).GetMethod(\"Test\", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static); method?.Invoke(null, null);");
-            if (error != null)
-                Debug.LogException(error);
+            try
+            {
+                var error = await Evaluator.Instance.EvaluateSilently("var method = typeof(TemplateClass).GetMethod(\"Test\", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static); method?.Invoke(null, null);");
+                if (error != null)
+                    Debug.LogException(error);
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError("代码执行失败, 请检查原代码块.(Code execution error, please check the original code block.)");
+                Debug.LogException(ex);
+            }
         }
 
         void TextFileChanged()
         {
             InitPrompts();
+        }
+
+        void RunScript(string code)
+        {
+            PythonRunner.EnsureInitialized();
+            using (Py.GIL())
+            {
+                m_CodeBuilder.Clear();
+                m_CodeBuilder.AppendLine("import sys");
+                m_CodeBuilder.AppendLine("import os");
+
+                var packagePaths = PythonSettings.GetSitePackages().ToList().ConvertAll(x => Path.Combine(Application.dataPath.Replace("Assets", string.Empty), x).Replace("\\", "/"));
+                foreach (var item in packagePaths)
+                    m_CodeBuilder.AppendLine($"sys.path.append('{item}')");
+
+                var scriptsAssemblies = Path.GetFullPath("Library/ScriptAssemblies");
+                scriptsAssemblies = scriptsAssemblies.Replace("\\", "/");
+                m_CodeBuilder.AppendLine($"sys.path.append('{scriptsAssemblies}')");
+
+                m_CodeBuilder.AppendLine($"os.environ['GPT_PATH']='{packagePaths[1]}'");
+                m_CodeBuilder.AppendLine(code);
+
+                var codeFileName = "Temp/template.py";
+                File.WriteAllText(codeFileName, m_CodeBuilder.ToString(), Encoding.UTF8);
+
+                var args = new List<string>
+                {
+                    $"\"{codeFileName}\""
+                };
+
+                m_ProcessState.Kill();
+                m_ProcessState.SetStart();
+                m_ProcessState.process = PythonRunner.SpawnPythonProcess(args, null, false, false, false, false);
+
+                // debug code
+                //var process = m_ProcessState.process;
+                //process.WaitForExit();
+                //var retcode = process.ExitCode;
+                //var output = process.StandardOutput.ReadToEnd();
+                //var errors = process.StandardError.ReadToEnd();
+
+                //if (retcode != 0)
+                //{
+                //    Debug.LogError(errors);
+                //    Debug.LogError(output);
+                //}
+            }
         }
     }
 
@@ -306,6 +408,109 @@ namespace UnityEditor.GPT
             }
 
             return string.Empty;
+        }
+    }
+
+    class ProcessState
+    {
+        public System.Diagnostics.Process process;
+        public bool isProcessing;
+        public bool isFinished;
+        public StringBuilder recvText;
+        public bool scrollToBottom;
+        public Action<string> onReceivedMsg;
+
+        Thread thread;
+        Socket socket;
+
+        public ProcessState()
+        {
+            recvText = new StringBuilder();
+        }
+
+        public void SetStart()
+        {
+            Reset();
+            isProcessing = true;
+            recvText.Clear();
+
+            StartThread();
+        }
+
+        public void SetFinish()
+        {
+            isFinished = true;
+        }
+
+        public void Reset()
+        {
+            isProcessing = false;
+            isFinished = false;
+
+            StopThread();
+        }
+
+        public void Kill()
+        {
+            if (process != null && !process.HasExited)
+                process.Kill();
+
+            StopThread();
+        }
+
+        void StartThread()
+        {
+            socket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
+            thread = new Thread(new ParameterizedThreadStart(StartListener));
+            thread.Start(socket);
+        }
+
+        void StopThread()
+        {
+            try
+            {
+                socket.Close();
+                socket = null;
+            }
+            catch { }
+
+            try
+            {
+                thread?.Abort();
+                thread = null;
+            }
+            catch { }
+        }
+
+        void StartListener(object obj)
+        {
+            var listener = obj as Socket;
+            var localEndPoint = new IPEndPoint(IPAddress.Any, 10086);
+            listener.Bind(localEndPoint);
+            listener.Listen(1);
+
+            var handler = listener.Accept();
+            var buffer = new byte[1024];
+
+            while (true)
+            {
+                var bytesReceived = handler.Receive(buffer);
+                if (bytesReceived == 0)
+                {
+                    onReceivedMsg?.Invoke("\n\n");
+                    SetFinish();
+                    break;
+                }
+                else
+                {
+                    var message = Encoding.UTF8.GetString(buffer, 0, bytesReceived);
+                    recvText.Append(message);
+                    onReceivedMsg?.Invoke(message);
+                }
+            }
+
+            handler.Shutdown(SocketShutdown.Both);
+            handler.Close();
         }
     }
 

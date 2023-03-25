@@ -11,6 +11,7 @@
     "allowUnsafeCode": false,
     "overrideReferences": true,
     "precompiledReferences": [
+        "Python.Runtime.dll",
         "Microsoft.CodeAnalysis.CSharp.dll",
         "Microsoft.CodeAnalysis.CSharp.Workspaces.dll",
         "Microsoft.CodeAnalysis.CSharp.Scripting.dll",
