@@ -2,6 +2,8 @@
 
 **在Unity编辑器中使用ChatGPT、BingChat来生成并执行代码。**
 
+**文本支持流式传输**
+
 ---
 
 ![chatgpt](Screenshots/chatgpt.gif)
