@@ -16,19 +16,37 @@
 
 **Unity版本 >= 2019.3**
 
+### 初始化环境
+
+1. 进入Unity工程，等待Python环境初始化完成，然后 Edit -> Project Settings -> Python Scripting -> 
+
+   Launch Terminal (打开命令行工具)
+
+   ![image-20230324020733689](Screenshots/image-20230324020733689.png)
+
+2. 按顺序执行以下命令
+
+   ```bash
+   python -m pip install --upgrade pip
+   python -m pip install revChatGPT
+   python -m pip install EdgeGPT
+   ```
+
+3. 按照下面的教程配置AI
+
 ### 使用教程
 
 #### 配置ChatGPT
 
-1. 获取 ChatGPT 的 api_key，具体参考：https://github.com/acheong08/ChatGPT#v3-official-chat-api
-2. 编辑该Json配置：Assets/IntegrationGPT/openai_config.json
-3. 如果你没有代理节点的可以参考这里部署个腾讯云函数：[openai-api-proxy](https://github.com/easychen/openai-api-proxy/blob/master/FUNC.md)，然后替换掉配置中的 api_url 即可
+1. 获取 ChatGPT 的 api_key，具体参考：https://platform.openai.com/account/api-keys
+2. 编辑该Json配置：Assets/IntegrationGPT/Config~/chat_gpt_config.json
+3. 国内的可以参考这里部署个腾讯云函数：[openai-api-proxy](https://github.com/easychen/openai-api-proxy/blob/master/FUNC.md)，然后替换掉配置中的 api_url 即可
 
 ```json
 {
   # 将获取到的 api_key 替换掉下面的
   "api_key": "sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
-  # chatgpt使用的模型
+  # chatgpt使用的模型, 如果你是Plus用户, 可以修改模型为 gpt-4
   "model": "gpt-3.5-turbo",
   # 代理设置，如果不需要则删除，在国内的必须要设置，否则无法访问openai的api
   "proxy": "http://127.0.0.1:1080",
@@ -43,15 +61,15 @@
 }
 ```
 
-#### 配置Bing Chat
+#### 配置New Bing
 
-1. 首先确保你已经加入了 Bing Chat，具体参考：https://github.com/acheong08/EdgeGPT#checking-access-required
+1. 首先确保你已经加入了 New Bing，具体参考：https://github.com/acheong08/EdgeGPT#checking-access-required
 
 2. 然后获取 cookies，具体参考：https://github.com/acheong08/EdgeGPT#getting-authentication-required
 
-3. 将获取的 cookies 拷贝到 Assets/IntegrationGPT/bing_cookies.json 中
+3. 将获取的 cookies 拷贝到 Assets/IntegrationGPT/Config~/new_bing_cookies.json 中
 
-4. 编辑该Json配置：Assets/IntegrationGPT/bing_config.json
+4. 编辑该Json配置：Assets/IntegrationGPT/Config~/new_bing_config.json
 
    ```json
    {
@@ -74,25 +92,6 @@
 #### 配置Brad
 
 1. 后续增加
-
-
-
-
-
-### 如果出现使用不了, 请手动安装package
-
-![image-20230324020733689](Screenshots/image-20230324020733689.png)
-
-```
-使用以下命令手动安装所需的package
-
-python -m pip install EdgeGPT
-python -m pip install revChatGPT==3.3.5
-```
-
-![image-20230324021009501](Screenshots/image-20230324021009501.png)
-
-![image-20230324021128716](Screenshots/image-20230324021128716.png)
 
 
 

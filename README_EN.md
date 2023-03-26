@@ -18,18 +18,34 @@
 
 **Unity version >= 2019.3**
 
+### Initializing Environment
+
+1. Open your Unity project, wait for the Python environment to finish initializing, then go to Edit -> Project Settings -> Python Scripting -> Launch Terminal (open the command-line tool)
+
+   ![image-20230324020733689](Screenshots/image-20230324020733689.png)
+
+2. Execute the following commands in order:
+
+   ```bash
+   python -m pip install --upgrade pip
+   python -m pip install revChatGPT
+   python -m pip install EdgeGPT
+   ```
+
+3. Follow the tutorial below to configure AI.
+
 ### Usage Tutorial
 
 #### Configure ChatGPT
 
-1. Obtain the api_key for ChatGPT, refer to: https://github.com/acheong08/ChatGPT#v3-official-chat-api
-2. Edit this JSON configuration: Assets/IntegrationGPT/openai_config.json
+1. Obtain the api_key for ChatGPT, refer to: https://platform.openai.com/account/api-keys
+2. Edit this JSON configuration: Assets/IntegrationGPT/Config~/chat_gpt_config.json
 
 ```json
 {
   # Replace the api_key below with the one you obtained
   "api_key": "sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
-  # The model used by ChatGPT
+  # The model used by ChatGPT, If you are a Plus user, you can change the model to gpt-4.
   "model": "gpt-3.5-turbo",
   # Proxy settings, delete if not needed. Must be set for users in China to access the openai API.
   "proxy": "http://127.0.0.1:1080",
@@ -44,15 +60,15 @@
 }
 ```
 
-#### Configure Bing Chat
+#### Configure New Bing
 
-1. First, make sure you have joined Bing Chat, refer to: https://github.com/acheong08/EdgeGPT#checking-access-required
+1. First, make sure you have joined New Bing, refer to: https://github.com/acheong08/EdgeGPT#checking-access-required
 
 2. Then get the cookies, refer to: https://github.com/acheong08/EdgeGPT#getting-authentication-required
 
-3. Copy the obtained cookies to Assets/IntegrationGPT/bing_cookies.json
+3. Copy the obtained cookies to Assets/IntegrationGPT/Config~/new_bing_cookies.json
 
-4. Edit this JSON configuration: Assets/IntegrationGPT/bing_config.json
+4. Edit this JSON configuration: Assets/IntegrationGPT/Config~/new_bing_config.json
 
    ```json
    {
@@ -76,20 +92,7 @@
 
 1. To be added in the future
 
-### If it is not working, please manually install the required package
 
-![image-20230324020733689](Screenshots/image-20230324020733689.png)
-
-```bash
-Use the following command to manually install the required packages:
-
-python -m pip install EdgeGPT
-python -m pip install revChatGPT==3.3.5
-```
-
-![image-20230324021009501](Screenshots/image-20230324021009501.png)
-
-![image-20230324021128716](Screenshots/image-20230324021128716.png)
 
 ### References
 

@@ -2,14 +2,14 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Net.Sockets;
 using System.Net;
+using System.Net.Sockets;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
-using Python.Runtime;
 using UnityEditor.Scripting.Python;
 using UnityEngine;
+using Python.Runtime;
 
 namespace UnityEditor.GPT
 {
@@ -29,15 +29,17 @@ namespace UnityEditor.GPT
         Evaluator m_Evaluator;
         StringBuilder m_InputBuilder;
         StringBuilder m_CodeBuilder;
-        Dictionary<AIType, string> m_ApiUrlKeys;
 
         GUIStyle m_OutputStyle;
         Vector2 m_OutputPos;
         string m_OutputText;
+        bool m_OnlyShowOutput;
+        Queue<string> m_OutputBuffer;
+
         Vector2 m_InputPos;
         string m_InputText;
-        bool m_OnlyShowOutput;
 
+        int currentFrame;
         AIType m_CurrentType;
         Config m_CurrentData;
         int[] m_AITypeIDs;
@@ -71,26 +73,12 @@ namespace UnityEditor.GPT
 
             m_InputBuilder = new StringBuilder();
             m_CodeBuilder = new StringBuilder();
+            m_OutputBuffer = new Queue<string>();
 
-            var aiTypes = Enum.GetValues(typeof(AIType));
-            var len = aiTypes.Length;
-            m_AITypeNames = new string[len];
-            m_AITypeIDs = new int[len];
-
-            for (int i = 0; i < len; i++)
-            {
-                var item = (AIType)aiTypes.GetValue(i);
-                m_AITypeIDs[i] = (int)item;
-                m_AITypeNames[i] = item.ToString();
-            }
+            m_AITypeIDs = Constants.DisplayNames.Keys.ToList().ConvertAll(x => (int)x).ToArray();
+            m_AITypeNames = Constants.DisplayNames.Values.ToArray();
 
             InitPrompts();
-
-            m_ApiUrlKeys = new Dictionary<AIType, string>()
-            {
-                { AIType.OpenAI, "API_URL" },
-                { AIType.Bing, "BING_PROXY_URL" },
-            };
         }
 
         void OnDisable()
@@ -136,11 +124,11 @@ namespace UnityEditor.GPT
             }
             EditorGUILayout.EndHorizontal();
 
-            if (m_ProcessState.scrollToBottom)
+            if (m_OutputBuffer.Count > 0)
             {
-                m_ProcessState.scrollToBottom = false;
+                m_OutputText += m_OutputBuffer.Dequeue();
                 m_OutputPos.y = m_OutputStyle.CalcHeight(new GUIContent(m_OutputText), outputWidth);
-                if (m_ProcessState.isFinished)
+                if (m_OutputBuffer.Count == 0 && m_ProcessState.isFinished)
                 {
                     TryExecCode(m_ProcessState.recvText.ToString());
                     m_ProcessState.Reset();
@@ -163,7 +151,7 @@ namespace UnityEditor.GPT
 
                 EditorGUILayout.LabelField("AI:", EditorStyles.boldLabel, GUILayout.Width(20));
                 GUI.changed = false;
-                m_CurrentType = (AIType)EditorGUILayout.IntPopup((int)m_CurrentType, m_AITypeNames, m_AITypeIDs, GUILayout.Width(80));
+                m_CurrentType = (AIType)EditorGUILayout.IntPopup((int)m_CurrentType, m_AITypeNames, m_AITypeIDs, GUILayout.Width(100));
                 if (GUI.changed)
                     UpdateCurrentPromptData();
 
@@ -184,28 +172,40 @@ namespace UnityEditor.GPT
 
             EditorGUILayout.BeginVertical(GUILayout.Height(execHeight));
             {
-                EditorGUI.BeginDisabledGroup(string.IsNullOrEmpty(m_InputText) || m_ProcessState.isProcessing);
-                if (GUILayout.Button("Execute", GUILayout.Height(32)))
+                GUI.color = m_ProcessState.isProcessing ? new Color(1, 0.235F, 0.235F) : Color.white;
+                if (GUILayout.Button(m_ProcessState.isProcessing ? "Stop Responding" : "Execute", GUILayout.Height(32)))
                 {
-                    var inputText = m_InputText.Trim();
-                    m_InputBuilder.Clear();
-
-                    if (m_CurrentData != null && m_ApiUrlKeys.ContainsKey(m_CurrentType))
+                    if (m_ProcessState.isProcessing)
                     {
-                        m_InputBuilder.AppendLine($"import os");
-                        m_InputBuilder.AppendLine($"os.environ['{m_ApiUrlKeys[m_CurrentType]}']='{m_CurrentData.api_url ?? string.Empty}'");
+                        m_ProcessState.SetFinish("<color=#FF3C3C>Stopped response.</color>");
+                        m_ProcessState.Kill();
                     }
+                    else
+                    {
+                        var inputText = m_InputText.Trim();
 
-                    m_InputBuilder.AppendLine($"import gpt");
-                    m_InputBuilder.AppendLine($"gpt.set_prompt('''{m_CurrentData?.GetValue() ?? string.Empty}''')");
-                    m_InputBuilder.AppendLine($"gpt.ask_{m_CurrentType.ToString().ToLower()}('''{inputText}''')");
+                        m_InputBuilder.Clear();
+                        if (m_CurrentData != null && Constants.ApiUrlKeyNames.ContainsKey(m_CurrentType))
+                        {
+                            m_InputBuilder.AppendLine($"import os");
+                            m_InputBuilder.AppendLine($"os.environ['{Constants.ApiUrlKeyNames[m_CurrentType]}']='{m_CurrentData.api_url ?? string.Empty}'");
+                        }
 
-                    AppendToOutput($"<color=#FFCC00>You</color>: {inputText}\n<color=#00CCFF>{m_CurrentType}</color>: ");
-                    RunScript(m_InputBuilder.ToString());
+                        m_InputBuilder.AppendLine($"import gpt");
+                        m_InputBuilder.AppendLine($"gpt.set_prompt('''{m_CurrentData?.GetValue() ?? string.Empty}''')");
+                        m_InputBuilder.AppendLine($"gpt.set_config('''{Constants.GetConfigPath(m_CurrentType)}''')");
+                        m_InputBuilder.AppendLine($"gpt.ask_{Constants.FuncNames[m_CurrentType]}('''{inputText}''')");
+
+                        AppendToOutput($"<color=#FFCC00>You</color>: {inputText}\n<color=#00CCFF>{m_CurrentType}</color>: ");
+                        RunScript(m_InputBuilder.ToString());
+                    }
                 }
-                EditorGUI.EndDisabledGroup();
+                GUI.color = Color.white;
             }
             EditorGUILayout.EndVertical();
+
+            if (currentFrame++ % 2 == 0)
+                Repaint();
         }
 
         void InitStyles()
@@ -223,13 +223,11 @@ namespace UnityEditor.GPT
             if (m_Prompts == null)
                 m_Prompts = new Dictionary<AIType, Config>();
 
-            var folderPath = Path.Combine(Application.dataPath, "IntegrationGPT");
             var aiTypes = Enum.GetValues(typeof(AIType));
             for (int i = 0; i < aiTypes.Length; i++)
             {
                 var type = (AIType)aiTypes.GetValue(i);
-                var fileName = $"{type.ToString().ToLower()}_config.json";
-                var filePath = Path.Combine(folderPath, fileName);
+                var filePath = Constants.GetConfigPath(type);
 
                 if (!File.Exists(filePath))
                 {
@@ -260,8 +258,16 @@ namespace UnityEditor.GPT
 
         void AppendToOutput(string str)
         {
-            m_OutputText += str;
-            m_ProcessState.scrollToBottom = true;
+            var dontVerbatim = str.Contains("</color>");
+            if (dontVerbatim)
+            {
+                m_OutputBuffer.Enqueue(str);
+            }
+            else
+            {
+                foreach (var item in str)
+                    m_OutputBuffer.Enqueue(item.ToString());
+            }
 
             Repaint();
             GUI.FocusControl(string.Empty);
@@ -303,9 +309,11 @@ namespace UnityEditor.GPT
         {
             try
             {
-                var error = await Evaluator.Instance.EvaluateSilently("var method = typeof(TemplateClass).GetMethod(\"Test\", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static); method?.Invoke(null, null);");
+                var error = await Evaluator.Instance.EvaluateSilently("var method = typeof(Template).GetMethod(\"Test\"," +
+                    "System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static);" +
+                    "method?.Invoke(null, null);");
                 if (error != null)
-                    Debug.LogException(error);
+                    throw error;
             }
             catch (Exception ex)
             {
@@ -349,17 +357,17 @@ namespace UnityEditor.GPT
 
                 m_ProcessState.Kill();
                 m_ProcessState.SetStart();
-                m_ProcessState.process = PythonRunner.SpawnPythonProcess(args, null, false, false, false, false);
+                m_ProcessState.process = PythonRunner.SpawnPythonProcess(args, null, false, false, true, true);
 
-                // debug code
+                //// debug code
                 //var process = m_ProcessState.process;
                 //process.WaitForExit();
                 //var retcode = process.ExitCode;
-                //var output = process.StandardOutput.ReadToEnd();
-                //var errors = process.StandardError.ReadToEnd();
 
                 //if (retcode != 0)
                 //{
+                //    var output = process.StandardOutput.ReadToEnd();
+                //    var errors = process.StandardError.ReadToEnd();
                 //    Debug.LogError(errors);
                 //    Debug.LogError(output);
                 //}
@@ -369,7 +377,7 @@ namespace UnityEditor.GPT
 
     public enum AIType
     {
-        OpenAI = 0,
+        ChatGPT = 0,
         Bing,
         Bard,
     }
@@ -411,13 +419,50 @@ namespace UnityEditor.GPT
         }
     }
 
+    class Constants
+    {
+        public static string GPTPath => Path.Combine(Application.dataPath, "IntegrationGPT");
+
+        public static Dictionary<AIType, string> DisplayNames => new Dictionary<AIType, string>()
+        {
+            { AIType.ChatGPT, "ChatGPT" },
+            { AIType.Bing, "New Bing" },
+            { AIType.Bard, "Google Bard" },
+        };
+
+        public static Dictionary<AIType, string> FuncNames => new Dictionary<AIType, string>()
+        {
+            { AIType.ChatGPT, "chat_gpt" },
+            { AIType.Bing, "bing" },
+            { AIType.Bard, "bard" },
+        };
+
+        public static Dictionary<AIType, string> ConfigNames => new Dictionary<AIType, string>
+        {
+            { AIType.ChatGPT, "chat_gpt_config.json" },
+            { AIType.Bing, "new_bing_config.json" },
+            { AIType.Bard, "google_bard_config.json" },
+        };
+
+        public static Dictionary<AIType, string> ApiUrlKeyNames = new Dictionary<AIType, string>()
+        {
+            { AIType.ChatGPT, "API_URL" },
+            { AIType.Bing, "BING_PROXY_URL" },
+        };
+
+        public static string GetConfigPath(AIType type)
+        {
+            var configName = ConfigNames[type];
+            return Path.Join(GPTPath, "Config~", configName).Replace("\\", "/");
+        }
+    }
+
     class ProcessState
     {
         public System.Diagnostics.Process process;
         public bool isProcessing;
         public bool isFinished;
         public StringBuilder recvText;
-        public bool scrollToBottom;
         public Action<string> onReceivedMsg;
 
         Thread thread;
@@ -437,8 +482,9 @@ namespace UnityEditor.GPT
             StartThread();
         }
 
-        public void SetFinish()
+        public void SetFinish(string msg = "")
         {
+            onReceivedMsg?.Invoke(msg + "\n\n");
             isFinished = true;
         }
 
@@ -489,15 +535,18 @@ namespace UnityEditor.GPT
             listener.Bind(localEndPoint);
             listener.Listen(1);
 
+            //Debug.Log("waiting");
+
             var handler = listener.Accept();
             var buffer = new byte[1024];
+
+            //Debug.Log("connected");
 
             while (true)
             {
                 var bytesReceived = handler.Receive(buffer);
                 if (bytesReceived == 0)
                 {
-                    onReceivedMsg?.Invoke("\n\n");
                     SetFinish();
                     break;
                 }
