@@ -309,7 +309,7 @@ namespace UnityEditor.GPT
         {
             try
             {
-                var error = await Evaluator.Instance.EvaluateSilently("var method = typeof(Template).GetMethod(\"Test\"," +
+                var error = await Evaluator.Instance.EvaluateSilently("var method = typeof(TemplateClass).GetMethod(\"Test\"," +
                     "System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static);" +
                     "method?.Invoke(null, null);");
                 if (error != null)
