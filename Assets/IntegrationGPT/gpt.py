@@ -69,12 +69,7 @@ async def _ask_chat_gpt(question):
         api_key = config_data["api_key"]
         model = config_data["model"]
 
-        if "proxy" in config_data:
-            proxy = config_data["proxy"]
-        else:
-            proxy = None
-
-        chatbot = chatgpt.ChatbotCLI(api_key=api_key, engine=model, proxy=proxy)
+        chatbot = chatgpt.ChatbotCLI(api_key=api_key, engine=model)
         for query in chatbot.ask_stream(prompt):
             send_text(query)
     except Exception as e:
@@ -95,14 +90,10 @@ async def _ask_bing(question):
 
         prompt = config_prompt + question
         style = config_data["style"]
-        if "proxy" in config_data:
-            proxy = config_data["proxy"]
-        else:
-            proxy = None
 
         dir_path, filename = os.path.split(config_path)
         cookie_path = os.path.join(dir_path, config_data["cookie_path"])
-        chatbot = bing.Chatbot(cookiePath=cookie_path, proxy=proxy)
+        chatbot = bing.Chatbot(cookiePath=cookie_path)
 
         wrote = 0
         async for final, response in chatbot.ask_stream(
@@ -130,12 +121,8 @@ async def _ask_bard(question):
 
         prompt = config_prompt + question
         session = config_data["session"]
-        if "proxy" in config_data:
-            proxy = config_data["proxy"]
-        else:
-            proxy = None
 
-        chatbot = googleBard.Chatbot(session) # proxy=proxy
+        chatbot = googleBard.Chatbot(session)
         send_text(chatbot.ask(prompt)["content"])
     except Exception as e:
         send_exception(e)

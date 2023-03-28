@@ -26,11 +26,13 @@ namespace UnityEditor.GPT
 
         static GPTWindow s_Instance;
 
+        public static bool EnableStreamingOutput = true;
+
         Evaluator m_Evaluator;
         StringBuilder m_InputBuilder;
         StringBuilder m_CodeBuilder;
 
-        GUIStyle m_OutputStyle;
+        GUIStyle m_TextFieldStyle;
         Vector2 m_OutputPos;
         string m_OutputText;
         bool m_OnlyShowOutput;
@@ -102,12 +104,10 @@ namespace UnityEditor.GPT
             var windowSize = position.size;
             var execHeight = 50;
             var labelHeight = 16;
+            windowSize.y -= labelHeight * 2;
 
             if (!m_OnlyShowOutput)
-            {
                 windowSize.y -= execHeight;
-                windowSize.y -= labelHeight * 2;
-            }
 
             var outputWidth = windowSize.x;
             var outputHeight = windowSize.y * (m_OnlyShowOutput ? 1 : 0.5F);
@@ -127,7 +127,7 @@ namespace UnityEditor.GPT
             if (m_OutputBuffer.Count > 0)
             {
                 m_OutputText += m_OutputBuffer.Dequeue();
-                m_OutputPos.y = m_OutputStyle.CalcHeight(new GUIContent(m_OutputText), outputWidth);
+                m_OutputPos.y = m_TextFieldStyle.CalcHeight(new GUIContent(m_OutputText), outputWidth);
                 if (m_OutputBuffer.Count == 0 && m_ProcessState.isFinished)
                 {
                     TryExecCode(m_ProcessState.recvText.ToString());
@@ -137,72 +137,73 @@ namespace UnityEditor.GPT
 
             m_OutputPos = EditorGUILayout.BeginScrollView(m_OutputPos, GUILayout.Height(outputHeight));
             {
-                GUILayout.TextField(m_OutputText, m_OutputStyle, GUILayout.ExpandHeight(true));
+                GUILayout.TextField(m_OutputText, m_TextFieldStyle, GUILayout.ExpandHeight(true));
             }
             EditorGUILayout.EndScrollView();
 
-            if (inputHeight == 0)
-                return;
-
-            EditorGUILayout.BeginHorizontal();
+            if (inputHeight > 0)
             {
-                EditorGUILayout.LabelField(" Input Command", EditorStyles.boldLabel, GUILayout.Height(labelHeight));
-                GUILayout.FlexibleSpace();
-
-                EditorGUILayout.LabelField("AI:", EditorStyles.boldLabel, GUILayout.Width(20));
-                GUI.changed = false;
-                m_CurrentType = (AIType)EditorGUILayout.IntPopup((int)m_CurrentType, m_AITypeNames, m_AITypeIDs, GUILayout.Width(100));
-                if (GUI.changed)
-                    UpdateCurrentPromptData();
-
-                GUILayout.Space(10);
-
-                EditorGUILayout.LabelField("Prompt:", EditorStyles.boldLabel, GUILayout.Width(50));
-                if (m_CurrentData != null)
-                    m_CurrentData.Index = EditorGUILayout.Popup(m_CurrentData.Index, m_CurrentData.Names);
-                else
-                    EditorGUILayout.LabelField(string.Empty, EditorStyles.popup);
-            }
-            EditorGUILayout.EndHorizontal();
-            m_InputPos = EditorGUILayout.BeginScrollView(m_InputPos, GUILayout.Height(inputHeight));
-            {
-                m_InputText = GUILayout.TextArea(m_InputText, GUILayout.ExpandHeight(true));
-            }
-            EditorGUILayout.EndScrollView();
-
-            EditorGUILayout.BeginVertical(GUILayout.Height(execHeight));
-            {
-                GUI.color = m_ProcessState.isProcessing ? new Color(1, 0.235F, 0.235F) : Color.white;
-                if (GUILayout.Button(m_ProcessState.isProcessing ? "Stop Responding" : "Execute", GUILayout.Height(32)))
+                EditorGUILayout.BeginHorizontal(GUILayout.Height(labelHeight));
                 {
-                    if (m_ProcessState.isProcessing)
-                    {
-                        m_ProcessState.SetFinish("<color=#FF3C3C>Stopped response.</color>");
-                        m_ProcessState.Kill();
-                    }
+                    EditorGUILayout.LabelField(" Input Command", EditorStyles.boldLabel);
+                    GUILayout.FlexibleSpace();
+
+                    EditorGUILayout.LabelField("AI:", EditorStyles.boldLabel, GUILayout.Width(20));
+                    GUI.changed = false;
+                    m_CurrentType = (AIType)EditorGUILayout.IntPopup((int)m_CurrentType, m_AITypeNames, m_AITypeIDs, GUILayout.Width(100));
+                    if (GUI.changed)
+                        UpdateCurrentPromptData();
+
+                    GUILayout.Space(10);
+
+                    EditorGUILayout.LabelField("Prompt:", EditorStyles.boldLabel, GUILayout.Width(50));
+                    if (m_CurrentData != null)
+                        m_CurrentData.Index = EditorGUILayout.Popup(m_CurrentData.Index, m_CurrentData.Names);
                     else
-                    {
-                        var inputText = m_InputText.Trim();
-
-                        m_InputBuilder.Clear();
-                        if (m_CurrentData != null && Constants.ApiUrlKeyNames.ContainsKey(m_CurrentType))
-                        {
-                            m_InputBuilder.AppendLine($"import os");
-                            m_InputBuilder.AppendLine($"os.environ['{Constants.ApiUrlKeyNames[m_CurrentType]}']='{m_CurrentData.api_url ?? string.Empty}'");
-                        }
-
-                        m_InputBuilder.AppendLine($"import gpt");
-                        m_InputBuilder.AppendLine($"gpt.set_prompt('''{m_CurrentData?.GetValue() ?? string.Empty}''')");
-                        m_InputBuilder.AppendLine($"gpt.set_config('''{Constants.GetConfigPath(m_CurrentType)}''')");
-                        m_InputBuilder.AppendLine($"gpt.ask_{Constants.FuncNames[m_CurrentType]}('''{inputText}''')");
-
-                        AppendToOutput($"<color=#FFCC00>You</color>: {inputText}\n<color=#00CCFF>{m_CurrentType}</color>: ");
-                        RunScript(m_InputBuilder.ToString());
-                    }
+                        EditorGUILayout.LabelField(string.Empty, EditorStyles.popup);
                 }
-                GUI.color = Color.white;
+                EditorGUILayout.EndHorizontal();
+
+                m_InputPos = EditorGUILayout.BeginScrollView(m_InputPos, GUILayout.Height(inputHeight));
+                {
+                    m_InputText = GUILayout.TextField(m_InputText, m_TextFieldStyle, GUILayout.ExpandHeight(true));
+                }
+                EditorGUILayout.EndScrollView();
+
+                EditorGUILayout.BeginVertical(GUILayout.Height(execHeight));
+                {
+                    GUI.color = m_ProcessState.isProcessing ? new Color(1, 0.235F, 0.235F) : Color.white;
+                    if (GUILayout.Button(m_ProcessState.isProcessing ? "Stop Responding" : "Execute", GUILayout.Height(32)))
+                    {
+                        if (m_ProcessState.isProcessing)
+                        {
+                            m_ProcessState.SetFinish("<color=#FF3C3C>Stopped response.</color>");
+                            m_ProcessState.Kill();
+                        }
+                        else
+                        {
+                            var inputText = m_InputText.Trim();
+
+                            m_InputBuilder.Clear();
+                            if (m_CurrentData != null && Constants.ApiUrlKeyNames.ContainsKey(m_CurrentType))
+                            {
+                                m_InputBuilder.AppendLine($"import os");
+                                m_InputBuilder.AppendLine($"os.environ['{Constants.ApiUrlKeyNames[m_CurrentType]}']='{m_CurrentData.api_url ?? string.Empty}'");
+                            }
+
+                            m_InputBuilder.AppendLine($"import gpt");
+                            m_InputBuilder.AppendLine($"gpt.set_prompt('''{m_CurrentData?.GetValue() ?? string.Empty}''')");
+                            m_InputBuilder.AppendLine($"gpt.set_config('''{Constants.GetConfigPath(m_CurrentType)}''')");
+                            m_InputBuilder.AppendLine($"gpt.ask_{Constants.FuncNames[m_CurrentType]}('''{inputText}''')");
+
+                            AppendToOutput($"<color=#FFCC00>You</color>: {inputText}\n<color=#00CCFF>{m_CurrentType}</color>: ");
+                            RunScript(m_InputBuilder.ToString());
+                        }
+                    }
+                    GUI.color = Color.white;
+                }
+                EditorGUILayout.EndVertical();
             }
-            EditorGUILayout.EndVertical();
 
             if (currentFrame++ % 2 == 0)
                 Repaint();
@@ -210,11 +211,11 @@ namespace UnityEditor.GPT
 
         void InitStyles()
         {
-            if (m_OutputStyle == null)
+            if (m_TextFieldStyle == null)
             {
-                m_OutputStyle = new GUIStyle(EditorStyles.textField);
-                m_OutputStyle.richText = true;
-                m_OutputStyle.wordWrap = true;
+                m_TextFieldStyle = new GUIStyle(EditorStyles.textField);
+                m_TextFieldStyle.richText = true;
+                m_TextFieldStyle.wordWrap = true;
             }
         }
 
@@ -258,15 +259,25 @@ namespace UnityEditor.GPT
 
         void AppendToOutput(string str)
         {
-            var dontVerbatim = str.Contains("</color>");
-            if (dontVerbatim)
+            if (EnableStreamingOutput)
             {
-                m_OutputBuffer.Enqueue(str);
+                var dontVerbatim = str.Contains("</color>");
+                if (dontVerbatim)
+                {
+                    m_OutputBuffer.Enqueue(str);
+                }
+                else
+                {
+                    foreach (var item in str)
+                        m_OutputBuffer.Enqueue(item.ToString());
+                }
             }
             else
             {
-                foreach (var item in str)
-                    m_OutputBuffer.Enqueue(item.ToString());
+                m_OutputText += str;
+
+                if (m_ProcessState.isFinished)
+                    m_ProcessState.Reset();
             }
 
             Repaint();
@@ -355,9 +366,13 @@ namespace UnityEditor.GPT
                     $"\"{codeFileName}\""
                 };
 
+                var environments = new Dictionary<string, string>();
+                if (!string.IsNullOrEmpty(m_CurrentData?.proxy))
+                    environments.Add("all_proxy", m_CurrentData.proxy);
+
                 m_ProcessState.Kill();
                 m_ProcessState.SetStart();
-                m_ProcessState.process = PythonRunner.SpawnPythonProcess(args, null, false, false, true, true);
+                m_ProcessState.process = PythonRunner.SpawnPythonProcess(args, environments, false, false, true, true);
 
                 //// debug code
                 //var process = m_ProcessState.process;
@@ -387,6 +402,7 @@ namespace UnityEditor.GPT
     {
         // json key
         public string api_url;
+        public string proxy;
         public Dictionary<string, string> prompts;
 
         // internal field
@@ -397,6 +413,7 @@ namespace UnityEditor.GPT
         {
             // copy
             api_url = config.api_url;
+            proxy = config.proxy;
             prompts = config.prompts;
 
             // init
@@ -422,6 +439,7 @@ namespace UnityEditor.GPT
     class Constants
     {
         public static string GPTPath => Path.Combine(Application.dataPath, "IntegrationGPT");
+        public static string ConfigPath => Path.Combine(GPTPath, "Config~");
 
         public static Dictionary<AIType, string> DisplayNames => new Dictionary<AIType, string>()
         {
@@ -453,7 +471,7 @@ namespace UnityEditor.GPT
         public static string GetConfigPath(AIType type)
         {
             var configName = ConfigNames[type];
-            return Path.Join(GPTPath, "Config~", configName).Replace("\\", "/");
+            return Path.Join(ConfigPath, configName).Replace("\\", "/");
         }
     }
 
@@ -563,21 +581,29 @@ namespace UnityEditor.GPT
         }
     }
 
-    class FilePostprocessor : AssetPostprocessor
+    [InitializeOnLoad]
+    class FilePostprocessor
     {
         public static event Action TextFileChanged;
 
-        static void OnPostprocessAllAssets(string[] importedAssets, string[] deletedAssets, string[] movedAssets, string[] movedFromAssetPaths)
+        static SynchronizationContext unitySynchronizationContext;
+        static FileSystemWatcher watcher;
+
+        static FilePostprocessor()
         {
-            foreach (var item in importedAssets)
+            unitySynchronizationContext = SynchronizationContext.Current;
+
+            watcher = new FileSystemWatcher(Constants.ConfigPath, "*.*");
+            watcher.Changed += OnFileChanged;
+            watcher.EnableRaisingEvents = true;
+        }
+
+        static void OnFileChanged(object sender, FileSystemEventArgs e)
+        {
+            unitySynchronizationContext.Post(d =>
             {
-                var ext = Path.GetExtension(item);
-                if (ext == ".json" || ext == ".txt")
-                {
-                    TextFileChanged?.Invoke();
-                    break;
-                }
-            }
+                TextFileChanged?.Invoke();
+            }, null);
         }
     }
 }

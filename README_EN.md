@@ -10,9 +10,19 @@
 
 ------
 
+ChatGPT
+
 ![chatgpt](Screenshots/chatgpt.gif)
 
+New Bing
+
 ![binggpt](Screenshots/binggpt.gif)
+
+Google Bard
+
+![bard](Screenshots/bard.gif)
+
+
 
 ### Installation Requirements
 
