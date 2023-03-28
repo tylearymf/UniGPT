@@ -1,6 +1,6 @@
 # UniGPT	[English Doc](https://github.com/tylearymf/UniGPT/blob/main/README_EN.md)
 
-**在Unity编辑器中使用ChatGPT、BingChat来生成并执行代码。**
+**在Unity编辑器中使用ChatGPT、NewBing、GoogleBard来生成并执行代码。**
 
 **输出文本支持流式传输**
 
@@ -30,13 +30,14 @@
    python -m pip install --upgrade pip
    python -m pip install revChatGPT
    python -m pip install EdgeGPT
+   python -m pip install GoogleBard
    ```
 
 3. 按照下面的教程配置AI
 
 ### 使用教程
 
-#### 配置ChatGPT
+#### 配置 ChatGPT
 
 1. 获取 ChatGPT 的 api_key，具体参考：https://platform.openai.com/account/api-keys
 2. 编辑该Json配置：Assets/IntegrationGPT/Config~/chat_gpt_config.json
@@ -61,7 +62,7 @@
 }
 ```
 
-#### 配置New Bing
+#### 配置 New Bing
 
 1. 首先确保你已经加入了 New Bing，具体参考：https://github.com/acheong08/EdgeGPT#checking-access-required
 
@@ -89,12 +90,32 @@
    }
    ```
 
-#### 配置Brad
+#### 配置 Google Bard
 
-1. 后续增加
+1. 首先确保你已经加入了 Google Bard
+
+2. 然后获取session，具体参考：https://github.com/acheong08/Bard#authentication
+
+3. 编辑该Json配置：Assets/IntegrationGPT/Config~/google_bard_config.json
+
+   ```json
+   {
+       # google bard 的 session
+       "session": "",
+        # 代理设置，如果不需要则删除，在国内的必须要设置，否则无法访问google的api
+       "proxy": "",
+       # 这个是Google Bard的提示语，可以根据需要增删
+       "prompts":{
+           "Chat": ""
+       }
+   }
+   ```
+
+   
 
 
 
 ### 引用
 - [ChatGPT](https://github.com/acheong08/ChatGPT)
 - [EdgeGPT](https://github.com/acheong08/EdgeGPT)
+- [GoogleBard](https://github.com/acheong08/Bard)

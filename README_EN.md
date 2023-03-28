@@ -4,7 +4,7 @@
 
 # UniGPT
 
-**Use ChatGPT and BingChat to generate and execute code within the Unity editor.**
+**Use ChatGPT, NewBing and GoogleBard to generate and execute code within the Unity editor.**
 
 **Output text supports streaming.**
 
@@ -30,6 +30,7 @@
    python -m pip install --upgrade pip
    python -m pip install revChatGPT
    python -m pip install EdgeGPT
+   python -m pip install GoogleBard
    ```
 
 3. Follow the tutorial below to configure AI.
@@ -88,9 +89,28 @@
    }
    ```
 
-#### Configure Brad
+#### Configure Google Bard
 
-1. To be added in the future
+1. First, make sure you have joined Google Bard.
+
+2. Then obtain the session. For details, refer to: https://github.com/acheong08/Bard#authentication
+
+3. Edit this JSON configuration: Assets/IntegrationGPT/Config~/google_bard_config.json.
+
+   ```json
+   {
+       # Session for Google Bard
+       "session": "",
+        # Proxy settings, delete if not needed. Must be set for users in China to access the Google API
+       "proxy": "",
+       # This is the prompt for Google Bard, you can add or delete prompts as needed
+       "prompts":{
+           "Chat": ""
+       }
+   }
+   ```
+
+   
 
 
 
@@ -98,3 +118,4 @@
 
 - [ChatGPT](https://github.com/acheong08/ChatGPT)
 - [EdgeGPT](https://github.com/acheong08/EdgeGPT)
+- [GoogleBard](https://github.com/acheong08/Bard)

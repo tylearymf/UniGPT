@@ -6,7 +6,8 @@ import enum
 import socket
 
 import EdgeGPT as bing
-import revChatGPT.V3 as openai_v3
+import revChatGPT.V3 as chatgpt
+import Bard as googleBard
 
 
 class AIType(enum.IntEnum):
@@ -73,7 +74,7 @@ async def _ask_chat_gpt(question):
         else:
             proxy = None
 
-        chatbot = openai_v3.ChatbotCLI(api_key=api_key, engine=model, proxy=proxy)
+        chatbot = chatgpt.ChatbotCLI(api_key=api_key, engine=model, proxy=proxy)
         for query in chatbot.ask_stream(prompt):
             send_text(query)
     except Exception as e:
@@ -101,16 +102,16 @@ async def _ask_bing(question):
 
         dir_path, filename = os.path.split(config_path)
         cookie_path = os.path.join(dir_path, config_data["cookie_path"])
-        bot = bing.Chatbot(cookiePath=cookie_path, proxy=proxy)
+        chatbot = bing.Chatbot(cookiePath=cookie_path, proxy=proxy)
 
         wrote = 0
-        async for final, response in bot.ask_stream(
+        async for final, response in chatbot.ask_stream(
             prompt=prompt, conversation_style=style
         ):
             if not final:
                 send_text(response[wrote:])
                 wrote = len(response)
-        await bot.close()
+        await chatbot.close()
     except Exception as e:
         send_exception(e)
     finally:
@@ -124,8 +125,18 @@ def ask_bing(question):
 async def _ask_bard(question):
     try:
         type = AIType.Bard
+        if _common_filter(type, question):
+            return
 
-        send_text("not implemented")
+        prompt = config_prompt + question
+        session = config_data["session"]
+        if "proxy" in config_data:
+            proxy = config_data["proxy"]
+        else:
+            proxy = None
+
+        chatbot = googleBard.Chatbot(session) # proxy=proxy
+        send_text(chatbot.ask(prompt)["content"])
     except Exception as e:
         send_exception(e)
     finally:
