@@ -93,7 +93,7 @@ async def _ask_bing(question):
 
         dir_path, filename = os.path.split(config_path)
         cookie_path = os.path.join(dir_path, config_data["cookie_path"])
-        chatbot = bing.Chatbot(cookiePath=cookie_path)
+        chatbot = bing.Chatbot(cookie_path=cookie_path)
 
         wrote = 0
         async for final, response in chatbot.ask_stream(
